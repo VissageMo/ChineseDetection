@@ -151,7 +151,7 @@ for epoch in range(iters):
         loss.backward()
         optimizer.step()
         writer.add_scalar('Train/Loss', loss.item(), epoch)
-
+ 
         if (batch_id) % 50 == 0:
             _, pred = output.data.max(1)
             total = target.size(0)
