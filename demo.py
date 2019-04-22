@@ -44,13 +44,14 @@ for i, label in enumerate(LABELS):
     ANTILABELDICT[i] = label
 
 transform = transforms.Compose([
-    transforms.Resize((256, 256)),
+    transforms.Resize((196, 196)),
     transforms.ToTensor(),
     # transforms.Normalize((0.5), (1.0))
 ])
 
 full_set = fullImageFolder(train_path, transform)
 train_set, test_set = train_test_split(full_set, 0.8)
+train_num, test_num, batch_num = len(train_set), len(test_set), train_num / batch_size
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=True)
 
@@ -79,18 +80,18 @@ for epoch in range(iters):
         loss = F.cross_entropy(output, target)
         loss.backward()
         optimizer.step()
-        writer.add_scalar('Train/Loss', loss.item(), epoch)
+        writer.add_scalar('Train/Loss', loss.item(), epoch * batch_num + batch_id)
  
         if (batch_id) % 50 == 0 and batch_id > 0:
             _, pred = output.data.max(1)
             total = target.size(0)
             correct = (pred == target).sum().item()
             print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
-                   .format(epoch+1, iters, (batch_id)*batch_size, 40000, loss.item()))
+                   .format(epoch+1, iters, (batch_id)*batch_size, train_num, loss.item()))
     
     model.eval()
     with torch.no_grad():
-        correct, total = 0, 0
+        correct = 0
         for batch_id, (data, target) in enumerate(test_loader):
             if is_cuda:
                 data, target = data.cuda(), target.cuda()
@@ -98,15 +99,15 @@ for epoch in range(iters):
             _, pred = output.data.max(1)
             total = target.size(0)
             correct += (pred == target).sum().item()
-            total += len(data)
-        accuracy = correct / total
-        writer.add_scalar('Train/Accuracy', correct / total, epoch)
+        accuracy = correct / test_num
+        writer.add_scalar('Train/Accuracy', correct / test_num, epoch)
         print('################################################')
-        print('Epoch [{}/{}] finished, Correct: [{}/{}]'.format(epoch+1, iters, correct, total))
+        print('Epoch [{}/{}] finished, Correct: [{}/{}]'.format(epoch+1, iters, correct, test_num))
         print('################################################')
     
     # change learning rate
-    learning_rate = adjust_learning_rate(init_learning_rate, decay_point, accuracy=accuracy)
+    if learning_rate_decay:
+        learning_rate = adjust_learning_rate(init_learning_rate, decay_point, accuracy=accuracy)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     
     # save model if better
