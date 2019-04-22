@@ -1,33 +1,31 @@
 import os
 import pandas as pd
+import csv
 
 import numpy as np
 from PIL import Image
+import _pickle as pickle
 from tensorboardX import SummaryWriter
 from data import train_test_split, fullImageFolder
-from model import resnet
-from utils import adjust_learning_rate
 
 import torch
 import torch.optim as optim
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
 import torchvision
 import torchvision.models as models
 import torchvision.transforms as transforms
 
-
 is_cuda = torch.cuda.is_available()
 num_gpu = 1
 iters = 10
 batch_size = 64
-init_learning_rate = 0.1
-decay_point = [0.5, 0.8, 0.9, 0.95]
 load_model = False
-learning_rate_decay = False
 model_path = 'test.pkl'
 train_path = '../../Datasets/ChineseDetection/train'
 test_path = '../../Datasets/ChineseDetection/test1'
+test_labels = pd.read_csv('../../Datasets/ChineseDetection/label-test1-fake.csv')
 
 LABELS = ['且', '世', '东', '九', '亭', '今', '从', '令', '作', '使', '侯', '元', 
           '光', '利', '印', '去', '受', '右', '司', '合', '名', '周', '命', '和', 
@@ -49,8 +47,7 @@ transform = transforms.Compose([
     # transforms.Normalize((0.5), (1.0))
 ])
 
-full_set = fullImageFolder(train_path, transform)
-train_set, test_set = train_test_split(full_set, 0.8)
+train_set, test_set = train_test_split(fullImageFolder(train_path, transform), 0.8)
 train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
 test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuffle=True)
 
@@ -58,15 +55,18 @@ test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size, shuff
 if load_model:
     model = torch.load(model_path, map_location='cpu')
 else:
-    model = resnet(num_classes=100, input_channel=1)
+    model = torchvision.models.resnet18(pretrained=True)
+    # model = torchvision.models.vgg11_bn(num_classes=100)
+    for param in model.parameters():
+        param.requires_grad = True
+    fc_features = model.fc.in_features
+    model.fc = nn.Linear(2048, 100)
 if is_cuda:
     model.cuda()
     print('Use GPU')
-
-#*** Init writer and optimizer ***#
 writer = SummaryWriter()
-optimizer = optim.SGD(model.parameters(), lr=init_learning_rate, momentum=0.9)
-best_accuracy = 0
+
+optimizer = optim.SGD(model.parameters(), lr=1e-2, momentum=0.9)
 
 for epoch in range(iters):
     model.train()
@@ -85,34 +85,10 @@ for epoch in range(iters):
             _, pred = output.data.max(1)
             total = target.size(0)
             correct = (pred == target).sum().item()
-            print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
-                   .format(epoch+1, iters, (batch_id)*batch_size, 40000, loss.item()))
-    
-    model.eval()
-    with torch.no_grad():
-        correct, total = 0, 0
-        for batch_id, (data, target) in enumerate(test_loader):
-            if is_cuda:
-                data, target = data.cuda(), target.cuda()
-            output = model(data)
-            _, pred = output.data.max(1)
-            total = target.size(0)
-            correct += (pred == target).sum().item()
-            total += len(data)
-        accuracy = correct / total
-        writer.add_scalar('Train/Accuracy', correct / total, epoch)
-        print('################################################')
-        print('Epoch [{}/{}] finished, Correct: [{}/{}]'.format(epoch+1, iters, correct, total))
-        print('################################################')
-    
-    # change learning rate
-    learning_rate = adjust_learning_rate(init_learning_rate, decay_point, accuracy=accuracy)
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    
-    # save model if better
-    if accuracy > best_accuracy:
-        best_accuracy = accuracy
-        torch.save(model, model_path)
-        print('Save model successd as {}, accuracy: {}'.format(model_path, best_accuracy))
+            writer.add_scalar('Train/Accuracy', correct/total, epoch)
+            print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Correct：[{}/{}]'
+                   .format(epoch+1, iters, (batch_id)*batch_size, 40000, loss.item(), correct, total))
+
+    torch.save(model, model_path)
 
 
