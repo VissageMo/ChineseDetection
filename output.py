@@ -18,7 +18,7 @@ import torchvision.transforms as transforms
 
 
 test_path = '../../Datasets/ChineseDetection/test2'
-model_path = 'test.pkl'
+model_path = 'model/98.45.pkl'
 answer_path = 'answer.csv'
 
 LABELS = ['且', '世', '东', '九', '亭', '今', '从', '令', '作', '使', '侯', '元', 
@@ -74,7 +74,7 @@ class testImageFolder(data.Dataset):
 
 test_set = testImageFolder(test_path, transform)
 
-model = torch.load(model_path)
+model = torch.load(model_path, map_location='cpu')
 if torch.cuda.is_available():
     print('GPU model')
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
